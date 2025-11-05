@@ -1,11 +1,26 @@
 [phases.setup]
-aptPkgs = ['yt-dlp', 'ffmpeg', 'python3', 'python3-pip']
+nixPkgs = ['python3', 'python3Packages.pip', 'ffmpeg']
 
 [phases.install]
-cmds = ['npm install']
-
-[phases.build]
-cmds = ['pip3 install --upgrade yt-dlp']
+cmds = [
+  'python3 -m pip install --upgrade pip',
+  'python3 -m pip install --upgrade yt-dlp',
+  'npm install'
+]
 
 [start]
 cmd = 'node server.js'
+```
+
+---
+
+## 🚀 **Recommend: Dùng Dockerfile**
+
+Dockerfile **reliable hơn** và dễ debug hơn. Structure files:
+```
+ytdlp-api/
+├── Dockerfile        # ← New (recommended)
+├── .dockerignore     # ← New
+├── server.js
+├── package.json
+└── README.md
