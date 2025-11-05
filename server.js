@@ -7,6 +7,7 @@ const { exec, spawn } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs');
 const path = require('path');
+const cron = require('node-cron');
 
 const execAsync = promisify(exec);
 const app = express();
@@ -20,22 +21,62 @@ app.use(express.json());
 const DOWNLOADS_DIR = path.join(__dirname, 'downloads');
 if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR);
 
-// Cleanup old files (older than 2 hours)
+// Configuration
+const FILE_RETENTION_TIME = 30 * 60 * 1000; // 30 minutes in milliseconds
+
+// Cleanup function - Delete MP4 files older than 30 minutes
 const cleanupOldFiles = () => {
   const now = Date.now();
-  const twoHours = 2 * 60 * 60 * 1000;
+  let deletedCount = 0;
+  let totalSize = 0;
   
-  fs.readdirSync(DOWNLOADS_DIR).forEach(file => {
-    const filePath = path.join(DOWNLOADS_DIR, file);
-    const stat = fs.statSync(filePath);
-    if (now - stat.mtimeMs > twoHours) {
-      fs.unlinkSync(filePath);
-      console.log(`Deleted old file: ${file}`);
-    }
-  });
+  console.log('\n[CLEANUP] Starting cleanup task...');
+  console.log(`[CLEANUP] Checking files in: ${DOWNLOADS_DIR}`);
+  
+  try {
+    const files = fs.readdirSync(DOWNLOADS_DIR);
+    console.log(`[CLEANUP] Found ${files.length} files`);
+    
+    files.forEach(file => {
+      const filePath = path.join(DOWNLOADS_DIR, file);
+      
+      try {
+        const stat = fs.statSync(filePath);
+        const fileAge = now - stat.mtimeMs;
+        const fileAgeMinutes = Math.floor(fileAge / 1000 / 60);
+        
+        // Only delete MP4 files older than 30 minutes
+        if (file.endsWith('.mp4') && fileAge > FILE_RETENTION_TIME) {
+          const fileSizeMB = (stat.size / 1024 / 1024).toFixed(2);
+          fs.unlinkSync(filePath);
+          deletedCount++;
+          totalSize += stat.size;
+          console.log(`[CLEANUP] ✓ Deleted: ${file} (${fileSizeMB} MB, age: ${fileAgeMinutes} min)`);
+        } else if (file.endsWith('.mp4')) {
+          console.log(`[CLEANUP] ○ Keeping: ${file} (age: ${fileAgeMinutes} min)`);
+        }
+      } catch (err) {
+        console.error(`[CLEANUP] ✗ Error processing ${file}:`, err.message);
+      }
+    });
+    
+    const totalSizeMB = (totalSize / 1024 / 1024).toFixed(2);
+    console.log(`[CLEANUP] Completed: Deleted ${deletedCount} files (${totalSizeMB} MB freed)`);
+    console.log(`[CLEANUP] Next cleanup in 5 minutes\n`);
+  } catch (err) {
+    console.error('[CLEANUP] Error during cleanup:', err.message);
+  }
 };
 
-setInterval(cleanupOldFiles, 30 * 60 * 1000); // Every 30 minutes
+// Schedule cron job: Run every 5 minutes
+cron.schedule('*/5 * * * *', () => {
+  cleanupOldFiles();
+});
+
+// Run cleanup on startup
+console.log('[CRON] Cleanup cron job scheduled: Every 5 minutes');
+console.log(`[CRON] Files will be deleted after ${FILE_RETENTION_TIME / 60 / 1000} minutes`);
+cleanupOldFiles();
 
 // Check if yt-dlp is installed
 const checkYtDlp = async () => {
