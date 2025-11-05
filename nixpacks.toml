@@ -1,0 +1,11 @@
+[phases.setup]
+aptPkgs = ['yt-dlp', 'ffmpeg', 'python3', 'python3-pip']
+
+[phases.install]
+cmds = ['npm install']
+
+[phases.build]
+cmds = ['pip3 install --upgrade yt-dlp']
+
+[start]
+cmd = 'node server.js'
