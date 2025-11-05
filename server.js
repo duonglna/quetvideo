@@ -113,7 +113,7 @@ app.post('/api/download', async (req, res) => {
   }
   
   const jobId = `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  const outputTemplate = path.join(DOWNLOADS_DIR, `${jobId}.%(ext)s`);
+  const outputPath = path.join(DOWNLOADS_DIR, `${jobId}.${format}`);
   
   try {
     // Build yt-dlp command
@@ -131,28 +131,47 @@ app.post('/api/download', async (req, res) => {
       formatStr = 'bestvideo[height<=480]+bestaudio/best[height<=480]';
     }
     
-    const cmd = [
-      'yt-dlp',
-      '-f', formatStr,
-      '--merge-output-format', format,
-      '-o', outputTemplate,
-      '--no-playlist',
-      url
-    ].join(' ');
+    // Use spawn instead of exec to avoid shell parsing issues
+    await new Promise((resolve, reject) => {
+      const args = [
+        '-f', formatStr,
+        '--merge-output-format', format,
+        '-o', outputPath,
+        '--no-playlist',
+        url
+      ];
+      
+      console.log(`Executing: yt-dlp ${args.join(' ')}`);
+      
+      const process = spawn('yt-dlp', args);
+      let stderr = '';
+      
+      process.stderr.on('data', (data) => {
+        stderr += data.toString();
+        console.log(data.toString());
+      });
+      
+      process.stdout.on('data', (data) => {
+        console.log(data.toString());
+      });
+      
+      process.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(stderr || `Process exited with code ${code}`));
+        }
+      });
+      
+      process.on('error', reject);
+    });
     
-    console.log(`Executing: ${cmd}`);
-    
-    await execAsync(cmd, { maxBuffer: 1024 * 1024 * 10 });
-    
-    // Find the downloaded file
-    const files = fs.readdirSync(DOWNLOADS_DIR)
-      .filter(f => f.startsWith(jobId));
-    
-    if (files.length === 0) {
+    // Check if file exists
+    if (!fs.existsSync(outputPath)) {
       throw new Error('Download completed but file not found');
     }
     
-    const fileName = files[0];
+    const fileName = `${jobId}.${format}`;
     const downloadUrl = `${req.protocol}://${req.get('host')}/api/file/${fileName}`;
     
     res.json({
@@ -184,31 +203,51 @@ app.post('/api/download-audio', async (req, res) => {
   }
   
   const jobId = `audio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  const outputTemplate = path.join(DOWNLOADS_DIR, `${jobId}.%(ext)s`);
+  const outputPath = path.join(DOWNLOADS_DIR, `${jobId}.${format}`);
   
   try {
-    const cmd = [
-      'yt-dlp',
-      '-x',
-      '--audio-format', format,
-      '--audio-quality', '0',
-      '-o', outputTemplate,
-      '--no-playlist',
-      url
-    ].join(' ');
+    // Use spawn to avoid shell parsing issues
+    await new Promise((resolve, reject) => {
+      const args = [
+        '-x',
+        '--audio-format', format,
+        '--audio-quality', '0',
+        '-o', outputPath,
+        '--no-playlist',
+        url
+      ];
+      
+      console.log(`Executing: yt-dlp ${args.join(' ')}`);
+      
+      const process = spawn('yt-dlp', args);
+      let stderr = '';
+      
+      process.stderr.on('data', (data) => {
+        stderr += data.toString();
+        console.log(data.toString());
+      });
+      
+      process.stdout.on('data', (data) => {
+        console.log(data.toString());
+      });
+      
+      process.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(stderr || `Process exited with code ${code}`));
+        }
+      });
+      
+      process.on('error', reject);
+    });
     
-    console.log(`Executing: ${cmd}`);
-    
-    await execAsync(cmd, { maxBuffer: 1024 * 1024 * 10 });
-    
-    const files = fs.readdirSync(DOWNLOADS_DIR)
-      .filter(f => f.startsWith(jobId));
-    
-    if (files.length === 0) {
+    // Check if file exists
+    if (!fs.existsSync(outputPath)) {
       throw new Error('Download completed but file not found');
     }
     
-    const fileName = files[0];
+    const fileName = `${jobId}.${format}`;
     const downloadUrl = `${req.protocol}://${req.get('host')}/api/file/${fileName}`;
     
     res.json({
